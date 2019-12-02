@@ -35,38 +35,53 @@ else:
 b = BPF(text="""
 #include <uapi/linux/ptrace.h>
 
-BPF_HASH(calls, int);
+
 BPF_STACK_TRACE(stack_traces, """ + stacks + """);
+struct alloc_info_t {
+    u32 size;
+    int stack_id;
+    u32 tid;
+    };
+
+BPF_PERF_OUTPUT(events);
 
 int alloc_enter(struct pt_regs *ctx, size_t size) {
+    u64 tgid_pid = bpf_get_current_pid_tgid();
     int key = stack_traces.get_stackid(ctx,
         BPF_F_USER_STACK|BPF_F_REUSE_STACKID);
     if (key < 0)
         return 0;
-
-    // could also use `calls.increment(key, size);`
-    u64 zero = 0, *val;
-    val = calls.lookup_or_try_init(&key, &zero);
-    if (val) {
-      (*val) += size;
-    }
+    u32 tid = tgid_pid >> 32;
+    struct alloc_info_t info = {};
+    info.size = size;
+    info.stack_id = key;
+    info.tid = tgid_pid >> 32;
+    events.perf_submit(ctx, &info, sizeof(info));
     return 0;
-};
+    };
 """)
 
+def print_event(cpu, data, size):
+    stack = []
+    stack_traces = b.get_table("stack_traces")
+    event = b["events"].event(data)
+    tid = str(event.tid)
+    size = str(event.size)
+    print("malloc %s of size %s" % (tid,size))
+    if event.stack_id > 0 :
+        stack = stack_traces.walk(event.stack_id)
+        for addr in stack:
+            print("    %s" % b.sym(addr, pid))
+
 b.attach_uprobe(name="c", sym="malloc", fn_name="alloc_enter", pid=pid)
+
 print("Attaching to malloc in pid %d, Ctrl+C to quit." % pid)
 
-# sleep until Ctrl-C
-try:
-    sleep(99999999)
-except KeyboardInterrupt:
-    pass
+b["events"].open_perf_buffer(print_event, page_cnt=64)
 
-calls = b.get_table("calls")
-stack_traces = b.get_table("stack_traces")
-
-for k, v in reversed(sorted(calls.items(), key=lambda c: c[1].value)):
-    print("%d bytes allocated at:" % v.value)
-    for addr in stack_traces.walk(k.value):
-        printb(b"\t%s" % b.sym(addr, pid, show_offset=True))
+# poll until Ctrl-C
+while 1:
+    try:
+        b.perf_buffer_poll()
+    except KeyboardInterrupt:
+        exit()
