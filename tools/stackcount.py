@@ -356,7 +356,7 @@ class Tool(object):
                         reversed(user_stack)] + \
                         (self.need_delimiter and ["-"] or []) + \
                         [b.ksym(addr).decode('utf-8', 'replace') for addr in reversed(kernel_stack)]
-                    print("%s %d" % (";".join(str(line)), v.value))
+                    print("%s %d" % (b"".join(str(line)), v.value))
                 else:
                     # print multi-line stack output
                     for addr in kernel_stack:
