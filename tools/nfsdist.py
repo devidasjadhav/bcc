@@ -68,7 +68,7 @@ BPF_HISTOGRAM(dist, dist_key_t);
 // time operation
 int trace_entry(struct pt_regs *ctx)
 {
-    u32 pid = bpf_get_current_pid_tgid();
+    u32 pid = bpf_get_current_pid_tgid() >> 32;
     if (FILTER_PID)
         return 0;
     u64 ts = bpf_ktime_get_ns();
@@ -79,7 +79,7 @@ int trace_entry(struct pt_regs *ctx)
 static int trace_return(struct pt_regs *ctx, const char *op)
 {
     u64 *tsp;
-    u32 pid = bpf_get_current_pid_tgid();
+    u32 pid = bpf_get_current_pid_tgid() >> 32;
 
     // fetch timestamp and calculate delta
     tsp = start.lookup(&pid);

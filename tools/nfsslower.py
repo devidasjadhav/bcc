@@ -162,6 +162,7 @@ static int trace_exit(struct pt_regs *ctx, int type)
     struct val_t *valp;
     u64 id = bpf_get_current_pid_tgid();
     u32 pid = id >> 32; // PID is higher part
+    u64 delta_us;
 
     valp = entryinfo.lookup(&id);
     if (valp == 0) {
@@ -171,7 +172,12 @@ static int trace_exit(struct pt_regs *ctx, int type)
 
     // calculate delta
     u64 ts = bpf_ktime_get_ns();
-    u64 delta_us = (ts - valp->ts) / 1000;
+    if (ts >= valp->ts){
+        delta_us = (ts - valp->ts) / 1000;
+    }
+    else {
+        delta_us = 1;
+    }
     entryinfo.delete(&id);
 
     if (FILTER_US)
